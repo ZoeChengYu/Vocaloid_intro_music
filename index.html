@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VOCALOID - 電子歌聲合成技術全解析</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=Noto+Sans+SC:wght@300;500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --accent: #39C5BB;
+            /* 初音绿 */
+            --accent-glow: rgba(57, 197, 187, 0.4);
+            --bg-dark: #0a0b10;
+            --card-bg: rgba(20, 25, 35, 0.85);
+            --text-main: #e0e0e0;
+            --text-dim: #b0b0b0;
+            --transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            --utau-accent: #FF5E7E;
+            /* 重音テト/UTAU 粉色 */
+            --xyy-accent: #87CEEB;
+            /* Sky Blue for Xia Yu Yao */
+            --xyy-accent-jade: #00A896;
+            /* Dark Jade Green for Xia Yu Yao */
+            --rei-accent: #69C6FF;
+            /* Sky Blue for Rei (Manye) */
+            --nami-accent: #FF8C00;
+            /* Amber Orange for Utaune Nami */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+            overflow: hidden;
+        }
+
+        /* Background Graphics */
+        .bg-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: radial-gradient(circle at center, #1a2a3a 0%, #0a0e14 100%);
+            overflow: hidden;
+        }
+
+        .overlay-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(57, 197, 187, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(57, 197, 187, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .bg-glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            filter: blur(80px);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: moveGlow 20s infinite alternate ease-in-out;
+        }
+
+        @keyframes moveGlow {
+            from {
+                transform: translate(-10%, -10%);
+            }
+
+            to {
+                transform: translate(110%, 110%);
+            }
+        }
+
+        /* Snap Container */
+        .container {
+            height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
+        }
+
+        .slide {
+            height: 100vh;
+            width: 100%;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            position: relative;
+        }
+
+        /* Visual Elements */
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 32px;
+            padding: 60px;
+            max-width: 1100px;
+            width: 90%;
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8);
+            transform: translateY(100px) scale(0.95);
+            opacity: 0;
+            transition: var(--transition);
+        }
+
+        .slide.active .glass-card {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+        }
+
+        h1,
+        h2 {
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 5rem;
+            text-shadow: 0 0 30px var(--accent-glow);
+            font-weight: 700;
+        }
+
+        h2 {
+            font-size: 3rem;
+            border-left: 6px solid var(--accent);
+            padding-left: 20px;
+        }
+
+        p {
+            line-height: 1.8;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            color: var(--text-dim);
+            font-weight: 300;
+        }
+
+        .accent-text {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .utau-text {
+            color: var(--utau-accent);
+            font-weight: 600;
+        }
+
+        .utau-border {
+            border-left-color: var(--utau-accent) !important;
+        }
+
+        .utau-glow {
+            text-shadow: 0 0 15px var(--utau-accent);
+            color: var(--utau-accent);
+        }
+
+        .xyy-text {
+            color: var(--xyy-accent);
+        }
+
+        .xyy-glow {
+            text-shadow: 0 0 15px var(--xyy-accent);
+            color: var(--xyy-accent);
+        }
+
+        .rei-text {
+            color: var(--rei-accent);
+        }
+
+        .rei-glow {
+            text-shadow: 0 0 15px var(--rei-accent);
+            color: var(--rei-accent);
+        }
+
+        .nami-text {
+            color: var(--nami-accent);
+            font-weight: 600;
+        }
+
+        .nami-border {
+            border-left-color: var(--nami-accent) !important;
+        }
+
+        .nami-glow {
+            text-shadow: 0 0 15px var(--nami-accent);
+            color: var(--nami-accent);
+        }
+
+        /* Navigation */
+        .nav-dots {
+            position: fixed;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            z-index: 100;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: 0.4s;
+        }
+
+        .dot.active {
+            background: var(--accent);
+            box-shadow: 0 0 15px var(--accent);
+            transform: scale(1.6);
+            border: none;
+        }
+
+        /* Components */
+        .version-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .v-card {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 25px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: 0.4s;
+        }
+
+        .v-card:hover {
+            background: rgba(57, 197, 187, 0.1);
+            border-color: var(--accent);
+            transform: translateY(-10px);
+        }
+
+        .v-card h3 {
+            color: var(--accent);
+            margin-bottom: 10px;
+            font-size: 1.5rem;
+        }
+
+        .v-card span {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+        }
+
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .param-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 16px;
+            border-bottom: 2px solid transparent;
+            transition: 0.3s;
+        }
+
+        .param-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-bottom-color: var(--accent);
+            transform: translateY(-5px);
+        }
+
+        .param-item strong {
+            color: var(--accent);
+            display: block;
+            font-size: 1.1rem;
+        }
+
+        .scroll-hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            animation: bounce 2s infinite;
+            color: var(--accent);
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            opacity: 0.6;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            20%,
+            50%,
+            80%,
+            100% {
+                transform: translateY(0) translateX(-50%);
+            }
+
+            40% {
+                transform: translateY(-10px) translateX(-50%);
+            }
+
+            60% {
+                transform: translateY(-5px) translateX(-50%);
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 0px;
+        }
+
+        /* Hide default scrollbar */
+
+        /* Vinyl Record Player Animation */
+        .vinyl-container {
+            width: 180px;
+            height: 180px;
+            position: relative;
+            perspective: 800px;
+        }
+
+        .vinyl-record {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle, #2c2c2c 10%, #111111 12%, #222222 13%, #050505 14%, #181818 20%, #0a0a0a 35%, #1f1f1f 40%, #000 65%);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.5s ease-out;
+            animation: spin 5s linear infinite;
+            animation-play-state: paused;
+        }
+
+        .vinyl-record::before {
+            content: '';
+            position: absolute;
+            width: 90%;
+            height: 90%;
+            border-radius: 50%;
+            border: 1px dashed rgba(255, 255, 255, 0.05);
+        }
+
+        .vinyl-record::after {
+            content: '';
+            position: absolute;
+            width: 70%;
+            height: 70%;
+            border-radius: 50%;
+            border: 1px dashed rgba(255, 255, 255, 0.05);
+        }
+
+        .vinyl-label {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid #000;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Player Button Style */
+        .player-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+        }
+
+        .player-btn:hover {
+            transform: scale(1.1);
+            background: var(--accent);
+            border-color: var(--accent);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        /* Range Slider Styles */
+        .progress-bar,
+        .volume-bar {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+            transition: background 0.3s;
+            cursor: pointer;
+        }
+
+        .progress-bar::-webkit-slider-thumb,
+        .volume-bar::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+            transition: transform 0.2s;
+        }
+
+        .progress-bar::-webkit-slider-thumb:hover,
+        .volume-bar::-webkit-slider-thumb:hover {
+            transform: scale(1.3);
+        }
+
+        /* Classes for Jade and UTAU elements */
+        .xyy-glow-jade {
+            text-shadow: 0 0 15px rgba(0, 168, 150, 0.6);
+            color: var(--xyy-accent-jade);
+        }
+
+        .xyy-text-jade {
+            color: var(--xyy-accent-jade);
+        }
+
+        .utau-glow {
+            text-shadow: 0 0 15px rgba(255, 94, 126, 0.6);
+            color: var(--utau-accent);
+        }
+
+        .utau-text {
+            color: var(--utau-accent);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="bg-layer">
+        <div class="bg-glow"></div>
+        <div class="overlay-grid"></div>
+    </div>
+
+    <div class="nav-dots" id="navDots"></div>
+    <div id="pageIndicator"
+        style="position: fixed; top: 30px; right: 30px; background: rgba(0,0,0,0.6); color: #fff; padding: 8px 18px; border-radius: 20px; font-weight: bold; font-size: 0.95rem; z-index: 1000; border: 1px solid rgba(255,255,255,0.15); backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0,0,0,0.4); letter-spacing: 1px;">
+        第 1 頁 / 共 18 頁</div>
+
+    <div class="container" id="mainContainer">
+        <!-- Slide 1: Hero -->
+        <section class="slide active" id="slide0">
+            <div class="glass-card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div>
+                        <h1>VOCALOID</h1>
+                        <p style="font-size: 2rem; color: var(--accent); margin-top: -20px; font-weight: 300;">THE ART
+                            OF DIGITAL VOICE</p>
+                    </div>
+                    <div style="text-align: right; border-right: 4px solid var(--accent); padding-right: 20px;">
+                        <p style="margin: 0; font-weight: 700;">報告主題：虛擬歌聲合成技術與音樂創作</p>
+                        <p style="margin: 0; font-size: 1rem;">主講人簡報投影</p>
+                    </div>
+                </div>
+                <div style="margin-top: 50px;">
+                    <p style="font-size: 1.2rem; line-height: 1.8; color: var(--text-dim);">
+                        本報告將為您解析電子歌聲合成技術的發展脈絡，從最早期的 <strong>Vocaloid</strong> 商業系統，到自由開放的 <strong>UTAU</strong>
+                        社群，再到現代化開源的 <strong>OpenUTAU</strong> 語音平台。<br><br>
+                        我們將透過三首極具代表性的翻唱與原創作品，實地示範多種音源庫的調教實踐與聲音美學。
+                    </p>
+                </div>
+                <div class="scroll-hint">SCROLL OR SWIPE TO START</div>
+            </div>
+        </section>
+
+        <!-- Slide 2: Vocaloid Definition -->
+        <section class="slide" id="slide1">
+            <div class="glass-card" style="border-left: 5px solid var(--accent);">
+                <h2 class="accent-glow">Vocaloid 的核心定義與起源</h2>
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <p><span class="accent-text">什麼是 Vocaloid？</span></p>
+                        <p style="font-size: 0.95rem; line-height: 1.8; color: var(--text-dim); margin-top: 10px;">
+                            • <b>核心技術</b>：Vocaloid 是由日本 <b>YAMAHA（山葉株式會社）</b>
+                            開發的電子歌聲合成軟體。其運作原理是採樣人類真實歌手的聲音片段，將其拆解為子音與母音的資料庫（稱為音源庫），再透過拼接合成與信號處理技術，輸入旋律與歌詞後即可合成出歌唱聲線。<br><br>
+                            • <b>商標與專利</b>：Vocaloid（VOCALOID）本身是 YAMAHA 的註冊商標，代表其專有的引擎。在廣義上，大眾常用「Vocaloid /
+                            歌聲合成」來稱呼以此類技術為核心所創作出的音樂與虛擬歌手文化；但在狹義上，只有使用 YAMAHA 官方引擎製作的音源及軟體才屬於 Vocaloid 體系。
+                        </p>
+                    </div>
+                    <div
+                        style="background: rgba(57, 197, 187, 0.05); border-radius: 20px; padding: 25px; border: 1px solid rgba(57, 197, 187, 0.15);">
+                        <h4 class="accent-text">廣義與狹義的區別</h4>
+                        <p style="font-size: 0.9rem; margin-top: 10px; line-height: 1.6;">
+                            • <b>狹義定義</b>：專指 YAMAHA 所開發之音聲合成軟體引擎及其官方授權之音源庫（如初音未來 V2/V3/V4X、巡音流歌等）。<br><br>
+                            • <b>廣義定義</b>：泛指以虛擬歌手為主角、由網路獨立創作者（P主）推動的二次元音聲創作生態系與同人文化圖騰。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 3: Vocaloid Evolution -->
+        <section class="slide" id="slide2">
+            <div class="glass-card" style="border-left: 5px solid var(--accent);">
+                <h2 class="accent-glow">Vocaloid 歷代進化與技術原理</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="accent-text">引擎歷代進化 (V1 至 V6 AI)</h4>
+                        <ul style="color: var(--text-dim); line-height: 1.8; font-size: 0.95rem; margin-top: 10px;">
+                            <li>• <b>V1 (2003)</b>：技術起步，拼接感較重，代表角色如 MEIKO、KAITO。</li>
+                            <li>• <b>V2 (2007)</b>：技術成熟期，加入歌聲合成模擬，誕生了傳奇虛擬歌手<b>初音未來</b>。</li>
+                            <li>• <b>V3 (2011)</b>：擴展多國語言與更平滑的滑音，音質大幅提升。</li>
+                            <li>• <b>V4 (2014)</b>：引入 Cross Synthesis（交叉合成）與 Growl（咆哮/嘶吼）效果。</li>
+                            <li>• <b>V5 (2018)</b>：全面改版編輯介面，支援直接匯入音軌並加入大量效果器。</li>
+                            <li>• <b>V6 (2022)</b>：導入 <b>VOCALOID:AI</b> 深度學習引擎，使合成歌聲在自然度與情感表達上達到全新高度。</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="accent-text">歌聲合成技術核心原理</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.7; margin-top: 10px;">
+                            • <b>波形拼接合成 (Concatenative
+                                Synthesis)</b>：將採樣的錄音碎片依據音高與時長進行拉伸、變調與拼接。在此過程中，最重要的技術是處理音節與音節之間的「過渡部」，以避免機械感。<br><br>
+                            • <b>激勵源-濾波器模型</b>：將歌聲信號分解為代表聲帶振動的激勵源（控制音高與聲門特徵）和代表聲道諧振的濾波器（控制共振峰與咬字）。AI
+                            時代則透過神經網路直接預測發音特徵與譜參數。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 4: Vocaloid Parameters -->
+        <section class="slide" id="slide3">
+            <div class="glass-card" style="border-left: 5px solid var(--accent);">
+                <h2 class="accent-glow">軟體調教核心參數解析</h2>
+                <p style="font-size: 1rem; color: var(--text-dim); margin-top: 5px;">調教 (Tuning)
+                    是賦予虛擬歌手靈魂的關鍵，創作者藉由控制以下參數模擬人類唱腔：</p>
+                <div class="param-grid">
+                    <div class="param-item">
+                        <strong>VEL (Velocity - 速度)</strong>
+                        <span>控制子音的長短。拉高 VEL 可縮短子音，使咬字顯得急促有力；降底則拉長子音，使咬字溫柔和緩。</span>
+                    </div>
+                    <div class="param-item">
+                        <strong>DYN (Dynamics - 動態)</strong>
+                        <span>控制聲音的強弱與音量起伏，是表現歌手呼吸感、漸強漸弱與情感拉扯最常用的參數。</span>
+                    </div>
+                    <div class="param-item">
+                        <strong>PBS / PIT (Pitch Bend - 滑音/音高)</strong>
+                        <span>控制音高的微調與滑音。人類唱歌時音高不會像鋼琴般精準跳躍，細緻的 PIT 線條可賦予轉音、顫音與滑音的人性化特質。</span>
+                    </div>
+                    <div class="param-item">
+                        <strong>GWL (Growl - 嘶吼)</strong>
+                        <span>V4 引擎引入的參數，用於產生搖滾、重金屬樂風中的嘶吼、破音或黑腔效果，展現極端的爆發力。</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 5: UTAU: 共享音源與社群力量 -->
+        <section class="slide" id="slide4">
+            <div class="glass-card" style="border-left: 5px solid var(--utau-accent);">
+                <h2 class="utau-glow">UTAU：自由與開放的音聲起點</h2>
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <p><span class="utau-text">自由創作的免費樂園</span></p>
+                        <p style="font-size: 0.95rem; line-height: 1.8; color: var(--text-dim); margin-top: 10px;">
+                            • <b>誕生背景</b>：UTAU 是由日本程式設計師 <b>飴屋／菖蒲 (Ameya/Ayame)</b> 於 2008 年開發的免費歌聲合成軟體。與商業授權昂貴的
+                            Vocaloid 不同，UTAU 自誕生之初就採取了完全免費且開放的策略。<br><br>
+                            • <b>核心特色：任何人都能製作音源</b>。用戶只需錄製自己的聲音片段，編寫對應的聲音索引設定檔（oto.ini），即可建立屬於自己的「UTAU
+                            聲庫」。這極大地降低了虛擬歌手的准入門檻，催生了成千上萬個獨具個性的原創角色（如重音テト、波音リツ、夏語遙等）。
+                        </p>
+                    </div>
+                    <div
+                        style="background: rgba(255, 94, 126, 0.05); border-radius: 20px; padding: 25px; border: 1px solid rgba(255, 94, 126, 0.15);">
+                        <h4 class="utau-text">社群與開源精神</h4>
+                        <p style="font-size: 0.9rem; margin-top: 10px; line-height: 1.6;">
+                            • UTAU 代表了「草根」與「同人」文化的極致。無數創作者在網路上免費共享自己錄製的音源，打破了商業公司的版權邊界。<br><br>
+                            • 音源庫的多樣性是 UTAU 的最大生命力。從甜美少女、磁性男音，到動物叫聲甚至電子雜音，皆能成為歌唱的素材。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 6: UTAU Tech -->
+        <section class="slide" id="slide5">
+            <div class="glass-card" style="border-left: 5px solid var(--utau-accent);">
+                <h2 class="utau-glow">UTAU 技術架構與採樣方式</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="utau-text">UTAU 技術三部構成</h4>
+                        <ul style="color: var(--text-dim); line-height: 1.8; font-size: 0.95rem; margin-top: 10px;">
+                            <li>• <b>音源庫 (Singer Database)</b>：由包含 wav 錄音與對應 oto.ini 參數檔的資料夾構成，儲存歌手的基礎聲音波形。</li>
+                            <li>• <b>編輯器 (Editor Interface)</b>：輸入音符、歌詞、調整音高曲線 (PIT) 與音量包絡 (Envelope) 的圖形介面。</li>
+                            <li>• <b>合成引擎 (Resampler Engine)</b>：負責將 wav 聲音切片進行變調與拼接的後台執行檔（如 <code>resampler.exe</code>,
+                                <code>fresamp.exe</code>, <code>tips.exe</code> 等）。
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="utau-text">音源採樣方式演進</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.7; margin-top: 10px;">
+                            • <b>單獨音 (CV)</b>：最基礎的採樣。如「a, i, u, e, o」。調教時字與字之間常有突兀的斷裂感，需要精細調整音量包絡。<br><br>
+                            • <b>連續音
+                                (VCV)</b>：錄製如「a-ki-ha-ba-ra」的連續發音，擷取音節重疊的過渡段（如「a_k」、「i_h」）。能極其自然地重現真實歌聲的連貫感，但聲庫容量成倍增加。<br><br>
+                            • <b>CVVC</b>：折衷方案。將「CV（子音-母音）」與「VC（母音-子音）」片段分開錄製並拼接。既有接近連續音的流暢度，又大幅減少了錄音工作量，常被用於中文聲庫的開發。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 7: OpenUTAU Intro -->
+        <section class="slide" id="slide6">
+            <div class="glass-card" style="border-left: 5px solid var(--accent);">
+                <h2 class="accent-glow">OpenUTAU：開源現代歌聲合成平台的革新</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="accent-text">什麼是 OpenUTAU？</h4>
+                        <p style="font-size: 0.95rem; color: var(--text-dim); line-height: 1.8; margin-top: 10px;">
+                            • <b>現代化替代品</b>：傳統 UTAU 編輯器（常年未更新）在現代 Windows 系統上面臨介面老舊、轉碼亂碼、多語系不友善等限制。<b>OpenUTAU</b>
+                            是一個完全開源、跨平台（Windows, macOS, Linux）且具有現代化 UI 的全新歌聲合成平台。<br><br>
+                            • <b>內建自動音素器 (Phonemizer)</b>：傳統 UTAU 需要手動將歌詞轉換為「連續音標記」或使用腳本。OpenUTAU
+                            內建了多語種音素轉換器，輸入中文字或日文假名後，系統會自動在後台完成 CVVC 或 VCV 的切分與拼接，極大縮短了製作時間。
+                        </p>
+                    </div>
+                    <div>
+                        <h4 class="accent-text">先進的聲音合成引擎相容性</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.7; margin-top: 10px;">
+                            • <b>多引擎動態配置</b>：支援動態設定各音軌的 Resampler（變調拼接器）與 Wavtool（連接器），且相容於傳統的 UTAU 外部引擎。<br><br>
+                            • <b>DiffSinger AI 模型整合</b>：除了傳統波形拼接，OpenUTAU 更深度整合了現代的 <b>DiffSinger</b>（基於擴散模型的深度學習歌聲合成）等
+                            AI 技術。支援聲線融合（Voice Color / Tone Mixing）、動態顫音與情感表達參數，實現傳統 UTAU 所無法企及的高自然度。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 8: Ai Kotoba Audio Player -->
+        <section class="slide" id="slide_ai_kotoba_player">
+            <div class="glass-card" style="border-left: 5px solid var(--utau-accent); text-align: center;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 20px;">
+                    <h2 class="utau-glow">第一首：愛言葉 (Ai Kotoba)</h2>
+                    <span
+                        style="background: var(--utau-accent); color: #fff; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">OpenUtau
+                        播放器</span>
+                </div>
+                <p style="font-size: 1.1rem; color: var(--text-dim); margin-top: 10px;">歌曲音訊：<code>ai-kotoba.wav</code>
+                    &nbsp;|&nbsp; 專案檔：<code>ai-kotoba.ustx</code></p>
+
+                <div style="display: flex; justify-content: center; align-items: center; gap: 60px; margin: 45px 0;">
+                    <!-- Rotating vinyl record -->
+                    <div class="vinyl-container" id="vinyl_ai_kotoba">
+                        <div class="vinyl-record">
+                            <div class="vinyl-label"
+                                style="background: linear-gradient(135deg, var(--utau-accent), #ff9eb5);">
+                                <span style="font-size: 0.7rem; font-weight: bold; color: #000;">愛言葉</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio controls -->
+                    <div style="width: 320px; text-align: left; display: flex; flex-direction: column; gap: 15px;">
+                        <audio id="audio_ai_kotoba" src="./ai-kotoba/ai-kotoba.wav"></audio>
+
+                        <div style="display: flex; align-items: center; gap: 20px;">
+                            <button class="player-btn" id="btn_ai_kotoba" onclick="togglePlay('ai_kotoba')">
+                                <svg id="icon_ai_kotoba" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                    <path d="M8 5v14l11-7z" />
+                                </svg>
+                            </button>
+                            <div style="flex-grow: 1;">
+                                <div
+                                    style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 5px;">
+                                    <span id="time_current_ai_kotoba">00:00</span>
+                                    <span id="time_duration_ai_kotoba">00:00</span>
+                                </div>
+                                <input type="range" class="progress-bar" id="progress_ai_kotoba" value="0" min="0"
+                                    max="100" step="0.1" oninput="seekAudio('ai_kotoba')">
+                            </div>
+                        </div>
+
+                        <!-- Volume control -->
+                        <div
+                            style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-dim);">
+                            <span>音量</span>
+                            <input type="range" class="volume-bar" id="volume_ai_kotoba" value="80" min="0" max="100"
+                                oninput="setVolume('ai_kotoba')">
+                            <span id="val_volume_ai_kotoba">80%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    style="background: rgba(255, 94, 126, 0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 94, 126, 0.15); display: inline-block;">
+                    <p style="font-size: 0.9rem; color: var(--text-dim);">💡 提示：點擊播放按鈕開始播放音樂。當您滾動到其他頁面時，播放器會自動暫停。</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 9: Ai Kotoba Story -->
+        <section class="slide" id="slide_ai_kotoba_story">
+            <div class="glass-card" style="border-left: 5px solid var(--utau-accent);">
+                <h2 class="utau-glow">《愛言葉》創作背景與感人起源</h2>
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="utau-text" style="font-size: 1.2rem;">DECO*27 對初音未來與聽眾的感謝信</h4>
+                        <p style="font-size: 0.95rem; line-height: 1.8; color: var(--text-dim); margin-top: 10px;">
+                            • <b>感謝的起源</b>：2008年起，當時身為業餘音樂人的 <b>DECO*27</b> 在 Niconico
+                            動畫平台上傳自己用初音未來製作的原創歌曲。由於初音未來的聲音與他的歌曲旋律完美契合，且受到了聽眾們無比熱烈的歡迎與支持，改變了他的音樂人生。<br><br>
+                            • <b>「我的孩子」與致謝</b>：在 2009 年 7 月，為了紀念自己在網路上進行音樂創作即將滿一週年，DECO*27
+                            抱持著<b>「趁著自己還沒有忘記當初這份恩情與感動時，必須趕快寫成歌送給大家」</b>的想法，寫下了《愛言葉》。他將初音未來親切地形容為<b>「我的孩子（僕の子供）」</b>，歌詞中的「總是承盟大家照顧我的孩子，在此向各位聽眾致上最誠摯的感謝」便是全曲的創作核心。<br><br>
+                            •
+                            <b>名詞由來</b>：歌名「愛言葉」是日文「合言葉」（意指密碼、暗號）的同音雙關語。全曲最動人的設計在於歌詞中的<b>「愛が10（とう）＝ありがとう（謝謝）」</b>（愛為10，在日文中發音與謝謝諧音），這句歌詞成为了創作者、虛擬歌手與聽眾之間心照不宣的秘密密語。
+                        </p>
+                    </div>
+                    <div
+                        style="background: rgba(255, 94, 126, 0.05); border-radius: 20px; padding: 25px; border: 1px solid rgba(255, 94, 126, 0.15);">
+                        <h4 class="utau-text">「愛言葉」的精神傳承</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.6; margin-top: 10px;">
+                            這首歌對 DECO*27 及整個 V
+                            家社群有著極其特殊的象徵地位。每隔幾年，當他的創作歷程邁入新階段時，他便會發表一首「愛言葉系列」的續作（如《愛言葉Ⅱ》、《愛言葉Ⅲ》、《愛言葉Ⅳ》、《愛言葉V》），每次都會巧妙融入舊作的旋律與對初音未來的告白，記錄了他與初音未來十幾年來共同成長的感人歷程。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 10: Ai Kotoba Details -->
+        <section class="slide" id="slide_ai_kotoba_details">
+            <div class="glass-card" style="border-left: 5px solid var(--utau-accent);">
+                <h2 class="utau-glow">《愛言葉》歌詞解讀與四人聲部配置</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="utau-text">歌詞巧思解讀</h4>
+                        <p style="font-size: 0.95rem; color: var(--text-dim); line-height: 1.8; margin-top: 10px;">
+                            • <b>彩蛋連發</b>：歌詞中融合了大量 DECO*27
+                            早期代表作的歌名或經典歌詞，例如《二息歩行》的「想與你接吻」與《罪と罰》的「將巧克力送給討厭的你」，對資深聽眾而言是一封無比溫暖的彩蛋情書。<br><br>
+                            • <b>直白而甜蜜的表白</b>：使用極具 DECO*27 個人風格的「因為喜歡你，其實就是喜歡你」等俏皮文字，奠定了他以「愛」為核心的創作基調。
+                        </p>
+                    </div>
+                    <div>
+                        <h4 class="utau-text">OpenUtau 四人聲部配置說明</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.7; margin-top: 10px;">
+                            本專案（<code>ai-kotoba.ustx</code>）巧妙地跳脫了傳統單一音源的限制，配置了四位 UTAU/OpenUtau
+                            歌手，通過不同音色交疊，展現出多采多姿的合唱效果：
+                        </p>
+                        <ul
+                            style="color: var(--text-dim); line-height: 1.7; font-size: 0.9rem; list-style: none; margin-top: 10px;">
+                            <li>• <span class="utau-text">重音テト (Kasane
+                                    Teto)</span>：作為主音軌，其極具穿透力、略帶電聲顆粒感的少女聲線，賦予樂曲蓬勃的朝氣與經典的 UTAU 氛圍。</li>
+                            <li>• <span class="utau-text">ずんだもん
+                                    (Zundamon)</span>：提供俏皮、活潑且萌度爆表的日語聲線，在合唱中作為點綴，增添了二次元的萌系能量。</li>
+                            <li>• <span class="utau-text">大江戸ちゃんこ (Oedo
+                                    Chanko)</span>：聲線平穩溫柔，在中音域起到了很好的「黏合劑」作用，增強了合音的厚度。</li>
+                            <li>• <span class="utau-text">護士機器人T型 (Nurse Robot Type
+                                    T)</span>：其獨特的電子音色與孩子氣咬字，為副唱軌道抹上了科技與甜美並存的亮色。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 11: Happiness Singing Audio Player -->
+        <section class="slide" id="slide_happiness_singing_player">
+            <div class="glass-card" style="border-left: 5px solid var(--xyy-accent-jade); text-align: center;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 20px;">
+                    <h2 class="xyy-glow-jade">第二首：幸福在歌唱 (Happiness Is Singing)</h2>
+                    <span
+                        style="background: var(--xyy-accent-jade); color: #fff; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">UTAU
+                        中文獨唱播放器</span>
+                </div>
+                <p style="font-size: 1.1rem; color: var(--text-dim); margin-top: 10px;">
+                    歌曲音訊：<code>Happiness Is Singing.wav</code> &nbsp;|&nbsp; 專案檔：<code>幸福在歌唱.ust</code></p>
+
+                <div style="display: flex; justify-content: center; align-items: center; gap: 60px; margin: 45px 0;">
+                    <!-- Rotating vinyl record -->
+                    <div class="vinyl-container" id="vinyl_happiness_singing">
+                        <div class="vinyl-record">
+                            <div class="vinyl-label"
+                                style="background: linear-gradient(135deg, var(--xyy-accent-jade), #4ee4d3);">
+                                <span style="font-size: 0.7rem; font-weight: bold; color: #000;">幸福在歌唱</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio controls -->
+                    <div style="width: 320px; text-align: left; display: flex; flex-direction: column; gap: 15px;">
+                        <audio id="audio_happiness_singing" src="./幸福在歌唱/Happiness Is Singing.wav"></audio>
+
+                        <div style="display: flex; align-items: center; gap: 20px;">
+                            <button class="player-btn" id="btn_happiness_singing"
+                                onclick="togglePlay('happiness_singing')">
+                                <svg id="icon_happiness_singing" viewBox="0 0 24 24" width="24" height="24"
+                                    fill="currentColor">
+                                    <path d="M8 5v14l11-7z" />
+                                </svg>
+                            </button>
+                            <div style="flex-grow: 1;">
+                                <div
+                                    style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 5px;">
+                                    <span id="time_current_happiness_singing">00:00</span>
+                                    <span id="time_duration_happiness_singing">00:00</span>
+                                </div>
+                                <input type="range" class="progress-bar" id="progress_happiness_singing" value="0"
+                                    min="0" max="100" step="0.1" oninput="seekAudio('happiness_singing')">
+                            </div>
+                        </div>
+
+                        <!-- Volume control -->
+                        <div
+                            style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-dim);">
+                            <span>音量</span>
+                            <input type="range" class="volume-bar" id="volume_happiness_singing" value="80" min="0"
+                                max="100" oninput="setVolume('happiness_singing')">
+                            <span id="val_volume_happiness_singing">80%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    style="background: rgba(0, 168, 150, 0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(0, 168, 150, 0.15); display: inline-block;">
+                    <p style="font-size: 0.9rem; color: var(--text-dim);">💡 提示：點擊播放按鈕開始播放音樂。當您滾動到其他頁面時，播放器會自動暫停。</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 12: Happiness Singing Story -->
+        <section class="slide" id="slide_happiness_singing_story">
+            <div class="glass-card" style="border-left: 5px solid var(--xyy-accent-jade);">
+                <h2 class="xyy-glow-jade">《幸福在歌唱》創作背景與音樂意境</h2>
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="xyy-text-jade" style="font-size: 1.2rem;">華語天后 A-Lin 暖心流行巨作的虛擬詮釋</h4>
+                        <p style="font-size: 0.95rem; line-height: 1.8; color: var(--text-dim); margin-top: 10px;">
+                            • <b>背景淵源</b>：《幸福在歌唱》是由金曲天后 <b>A-Lin (黃麗玲)</b>
+                            演唱的抒情單曲，亦是電影《陽光女子合唱團》的幸福版主題曲。該曲集結了黃金製作陣容，由知名導演林孝謙親自作詞、李方睿作曲，並由陳建騏擔任音樂製作人。這也是三人在締造神曲《有一種悲傷》後的再次深度合作。<br><br>
+                            • <b>音樂情感意境</b>：這首歌旨在傳達「悲傷故事裡的溫暖力量」。歌詞描繪了人在經歷生命的陰晴圓缺、花開花謝後，如何學會原諒並走出陰霾，擁抱生活中微小而真切的幸福。「我聽見幸福
+                            幸福在歌唱，唱人世悲歡 終化成土壤，陰晴圓缺 花開花謝 學會了原諒，你將最美的夢 遺落在我心上」，這種豁達與釋懷，被 A-Lin 寬廣的 16 度音域詮釋得大氣且富有渲染力。
+                        </p>
+                    </div>
+                    <div
+                        style="background: rgba(0, 168, 150, 0.05); border-radius: 20px; padding: 25px; border: 1px solid rgba(0, 168, 150, 0.15);">
+                        <h4 class="xyy-text-jade">從三次元到二次元的轉譯</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.7; margin-top: 10px;">
+                            將這首大跨度音域、富含極強情緒波動的華語主流流行樂，用虛擬歌手進行翻唱，是一次極具挑戰性的調教嘗試。相較於 A-Lin
+                            原唱版本中那種醇厚厚實且充滿爆發力的聲線，虛擬歌手的版本更增添了一份如風般的輕盈與空靈，將流行抒情歌轉譯為空靈治癒的二次元美學。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 13: Happiness Singing Tech -->
+        <section class="slide" id="slide_happiness_singing_tech">
+            <div class="glass-card" style="border-left: 5px solid var(--xyy-accent-jade);">
+                <h2 class="xyy-glow-jade">《幸福在歌唱》UTAU 中文調教技術深度剖析</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="xyy-text-jade">夏語遙 V3.01 聲庫特色</h4>
+                        <p style="font-size: 0.95rem; color: var(--text-dim); line-height: 1.8; margin-top: 10px;">
+                            • <b>台灣代表 UTAU 聲庫</b>：本專案使用
+                            <code>Xia_Voice_Bank_V301_Bundle</code>。夏語遙溫柔、略帶空氣感與治癒力量的歌聲，與《幸福在歌唱》歌詞中發音的溫度達到了高度契合。<br><br>
+                            • <b>高難度音域表現</b>：原曲音域跨度極大。調教時必須針對夏語遙高音區的乾癟現象進行補償，並藉由包絡修整維持低音區共鳴的穩重，使高低音轉換自然。
+                        </p>
+                    </div>
+                    <div>
+                        <h4 class="xyy-text-jade">中文 CVVC 調教引擎細節</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.7; margin-top: 10px;">
+                            在 <code>幸福在歌唱.ust</code> 專案中，為了克服中文聲韻母拼接的機械感，進行了高精度的底層調教：
+                        </p>
+                        <ul
+                            style="color: var(--text-dim); line-height: 1.7; font-size: 0.9rem; list-style: none; margin-top: 10px;">
+                            <li>• <b>CVVC 音素拼接</b>：利用中文 CVVC 規則，將每一個漢字的音軌切分為「子音-母音(CV)」和「母音-子音(VC)」的過渡段（例如將「幸福 xing
+                                fu」處理為 <code>[xi] [i-ng] [ng-f] [fu]</code>）。這徹底克服了傳統中文單獨音 (CV) 調教中常見的「齒音模糊」與「字音爆音」缺憾。
+                            </li>
+                            <li>• <b>輔助調教工具</b>：使用 <code>presamp.exe</code> 進行發音標記的預處理，並調用 <code>wavtoolex.exe</code>
+                                進行波形無縫拼接，使元音與輔音的連接圓潤流暢，歌聲宛如一體。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 14: Manye Audio Player -->
+        <section class="slide" id="slide_manye_player">
+            <div class="glass-card" style="border-left: 5px solid var(--rei-accent); text-align: center;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 20px;">
+                    <h2 class="rei-glow">最後一首：漫夜 (Manye / Sleepless)</h2>
+                    <span
+                        style="background: var(--rei-accent); color: #fff; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">OpenUtau
+                        八部合唱播放器</span>
+                </div>
+                <p style="font-size: 1.1rem; color: var(--text-dim); margin-top: 10px;">歌曲音訊：<code>漫夜(八部合唱).wav</code>
+                    &nbsp;|&nbsp; 專案檔：<code>漫夜(八部合唱).ustx</code> &nbsp;|&nbsp; 分軌：<code>Export(8d)</code></p>
+
+                <div style="display: flex; justify-content: center; align-items: center; gap: 60px; margin: 45px 0;">
+                    <!-- Rotating vinyl record -->
+                    <div class="vinyl-container" id="vinyl_manye">
+                        <div class="vinyl-record">
+                            <div class="vinyl-label"
+                                style="background: linear-gradient(135deg, var(--rei-accent), #83dcff);">
+                                <span style="font-size: 0.7rem; font-weight: bold; color: #fff;">漫夜</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio controls -->
+                    <div style="width: 320px; text-align: left; display: flex; flex-direction: column; gap: 15px;">
+                        <audio id="audio_manye" src="./漫夜/漫夜(八部合唱).wav"></audio>
+
+                        <div style="display: flex; align-items: center; gap: 20px;">
+                            <button class="player-btn" id="btn_manye" onclick="togglePlay('manye')">
+                                <svg id="icon_manye" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                    <path d="M8 5v14l11-7z" />
+                                </svg>
+                            </button>
+                            <div style="flex-grow: 1;">
+                                <div
+                                    style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 5px;">
+                                    <span id="time_current_manye">00:00</span>
+                                    <span id="time_duration_manye">00:00</span>
+                                </div>
+                                <input type="range" class="progress-bar" id="progress_manye" value="0" min="0" max="100"
+                                    step="0.1" oninput="seekAudio('manye')">
+                            </div>
+                        </div>
+
+                        <!-- Volume control -->
+                        <div
+                            style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-dim);">
+                            <span>音量</span>
+                            <input type="range" class="volume-bar" id="volume_manye" value="80" min="0" max="100"
+                                oninput="setVolume('manye')">
+                            <span id="val_volume_manye">80%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    style="background: rgba(105, 198, 255, 0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(105, 198, 255, 0.15); display: inline-block;">
+                    <p style="font-size: 0.9rem; color: var(--text-dim);">💡 提示：點擊播放按鈕開始播放音樂。當您滾動到其他頁面時，播放器會自動暫停。</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 15: Manye Original Artist -->
+        <section class="slide" id="slide_manye_artist">
+            <div class="glass-card" style="border-left: 5px solid var(--rei-accent);">
+                <h2 class="rei-glow">《漫夜》原唱與創作者背景解析</h2>
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="rei-text" style="font-size: 1.2rem;">子午計畫虛擬偶像 澪 REI 的心血結晶</h4>
+                        <p style="font-size: 0.95rem; line-height: 1.8; color: var(--text-dim); margin-top: 10px;">
+                            • <b>原創音樂人虛擬偶像</b>：<b>澪 Rei</b> 是台灣知名 VTuber 營運品牌「子午計畫 (Meridian
+                            Project)」旗下二期團體「霓NEOn」的成員。她以極具個人特色的慵懶聲線、寬廣的音域與優秀的詞曲創作實力著稱，在台灣虛擬偶像圈具有代表性地位。<br><br>
+                            • <b>《漫夜 Sleepless》發行背景</b>：此單曲於 2023 年 11 月正式發行，由 <b>澪 Rei
+                                親自作詞、作曲</b>。這首歌誕生於她正式出道之前，寫下了她當時身處深夜、被失眠折磨時，內心對於即將面臨的虛擬主播生涯所懷抱的強烈迷惘、不安與自我對話。<br><br>
+                            • <b>社群共鳴</b>：因為歌曲旋律優美、極具情感張力，發行後深受好評，成為台灣 VTuber
+                            圈內最熱門的「歌回（歌唱直播）」曲目之一，引發了大量虛擬藝人與粉絲的翻唱熱潮，也延伸出了由音樂人「葡萄」所編配的鋼琴改編版。
+                        </p>
+                    </div>
+                    <div
+                        style="background: rgba(105, 198, 255, 0.05); border-radius: 20px; padding: 25px; border: 1px solid rgba(105, 198, 255, 0.15);">
+                        <h4 class="rei-text">孤寂深夜的靈魂畫像</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.7; margin-top: 10px;">
+                            《漫夜》在緩慢而厚重的節奏中推進，描繪了人在黑夜中與孤獨拉扯、渴望尋求救贖卻又自我審視的心境。對於澪 Rei
+                            而言，這首歌曲不僅是她音樂生涯的代表作，更是她將個人深層情感與虛擬身份完美融合的藝術里程碑。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 16: Manye Lyrical Details -->
+        <section class="slide" id="slide_manye_lyrics_details">
+            <div class="glass-card" style="border-left: 5px solid var(--rei-accent);">
+                <h2 class="rei-glow">《漫夜》歌詞深度解讀與時間意境</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="rei-text">時隔一年的創作進化：5 AM 與 7 AM 的秘密</h4>
+                        <p style="font-size: 0.95rem; color: var(--text-dim); line-height: 1.8; margin-top: 10px;">
+                            • <b>時間線的密碼</b>：澪 Rei 在歌詞解析影片中曾透露過一個極具藝術溫度的時間密碼：當初錄製《漫夜》時，剛出道的她技巧青澀，錄音到<b>凌晨 5 點 (5:00
+                                AM)</b> 嗓音與體力便已到達極限。<br><br>
+                            • <b>職人的偏執</b>：然而時隔一年後，當她重新審視這首歌或在後續作品中打磨聲音時，為了雕琢一個微小的氣息音或轉音細節，她會不知不覺<b>偏執地堅持錄音到早上 7 點 (7:00
+                                AM)</b>。這兩個小時的跨度，見證了她從一個「努力的素人創作者」向「極致的專業歌者」的不懈進化。
+                        </p>
+                    </div>
+                    <div>
+                        <h4 class="rei-text">「不可複製的能量」與中之人拉扯</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-dim); line-height: 1.7; margin-top: 10px;">
+                            • <b>青澀卻真摯的靈魂</b>：Rei
+                            坦言，雖然現在的她擁有更好的錄音設備、更純熟的氣息控制與調教知識，但回頭聽一年前錄音的版本，那種帶有青澀、顫抖卻無比真摯的「原始迷惘」，是現在再完美的唱腔都無法還原的珍貴情感瞬間。<br><br>
+                            • <b>虛實邊界的拉扯</b>：這首歌透露了「中之人（扮演 VTuber
+                            的真實歌者）」在虛實交界處的無奈與孤獨——在網路的鎂光燈熄滅後的「漫夜」中，重新面對自我真實的重量。這份審視與期許，讓《漫夜》成為了她職業生涯中不可動搖的坐標。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 17: Manye Choir Details -->
+        <section class="slide" id="slide_manye_choir_details">
+            <div class="glass-card" style="border-left: 5px solid var(--rei-accent);">
+                <h2 class="rei-glow">《漫夜》UTAU 八人合唱專案配置</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 40px; margin-top: 20px;">
+                    <div>
+                        <h4 class="rei-text">從孤寂獨白到靈魂交響</h4>
+                        <p style="font-size: 0.95rem; color: var(--text-dim); line-height: 1.8; margin-top: 10px;">
+                            • <b>八人合唱企劃</b>：本專案（<code>漫夜(八部合唱).ustx</code>）將原曲的失眠獨白，改編為八位 UTAU 中日文歌手的聯合交響。在 OpenUtau 中透過
+                            Track 3 到 Track 11 的精細軌道編排，讓歌手們在不同段落輪流主唱、重唱與和聲。<br><br>
+                            • <b>分軌混合效果</b>：在 <code>Export(8d)</code>
+                            資料夾中，每位歌手的渲染音軌（WAV）皆被獨立輸出，進行了立體聲平移（Panning）與空間混響處理。使聽眾宛如置身於深夜的八人唱詩班中，聆聽來自不同次元的靈魂交談。
+                        </p>
+                    </div>
+                    <div>
+                        <h4 class="rei-text">八位歌手的音色定位與發音特性</h4>
+                        <div
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 0.85rem; color: var(--text-dim); margin-top: 10px;">
+                            <div>
+                                <strong class="rei-text">• 夏語遙 (Xia Yu Yao)</strong>
+                                <p style="margin-bottom: 5px;">擔任合唱的核心支柱，提供溫柔透明的中文主旋律。</p>
+                                <strong class="rei-text">• 葛平 / 灰雨灑 (Haiame Sen)</strong>
+                                <p style="margin-bottom: 5px;">負責中音區，其沙啞、富有故事感的發音增添了歲月感。</p>
+                                <strong class="rei-text">• 毒實音マシヤ (Mashya)</strong>
+                                <p style="margin-bottom: 5px;">音色粗獷有力，在中後段副歌起到了極佳的爆發烘托。</p>
+                                <strong class="rei-text">• 風伊特 (Kaze Imo)</strong>
+                                <p style="margin-bottom: 5px;">日語發音輕巧，在背景高音部充當靈活的和弦裝飾。</p>
+                            </div>
+                            <div>
+                                <strong class="rei-text">• 松尾翼 (Matsuo Tsubasa)</strong>
+                                <p style="margin-bottom: 5px;">利用「灰（憂鬱）」與「晴（高亢）」聲線對比，創造情感張力。</p>
+                                <strong class="rei-text">• 熱的 (Netsu Teki)</strong>
+                                <p style="margin-bottom: 5px;">厚實的中低男音，為合唱提供了穩固的地基。</p>
+                                <strong class="rei-text">• 楚麗 (Tsurei)</strong>
+                                <p style="margin-bottom: 5px;">其極為細緻流暢的 CVVC 拼接，負責柔和細膩的慢速樂段。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Slide 18: Conclusion -->
+        <section class="slide" id="slide_conclusion">
+            <div class="glass-card" style="text-align: center;">
+                <h2 style="border: none; padding: 0;">文化與未來：人機共奏的協奏曲</h2>
+                <p style="font-size: 1.5rem; margin-top: 30px;">電子歌聲合成不僅僅是技術工具，更是創作者的同音夥伴。</p>
+                <div style="display: flex; justify-content: center; gap: 40px; margin: 40px 0;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 3rem; color: var(--accent);">∞</div>
+                        <p style="font-weight: bold;">創作自由</p>
+                        <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 5px;">打破硬體與嗓音限制</p>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 3rem; color: var(--accent);">♫</div>
+                        <p style="font-weight: bold;">音聲革新</p>
+                        <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 5px;">探索波形與 AI 合成邊界</p>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 3rem; color: var(--accent);">♥</div>
+                        <p style="font-weight: bold;">文化連結</p>
+                        <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 5px;">連結全球獨立創作者的橋樑</p>
+                    </div>
+                </div>
+                <p style="color: var(--accent); font-weight: 700; letter-spacing: 5px; margin-top: 20px;">感謝聆聽 ‧ 簡報結束
+                </p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const container = document.getElementById('mainContainer');
+        const slides = document.querySelectorAll('.slide');
+        const dotsContainer = document.getElementById('navDots');
+
+        // Nav dots creation
+        slides.forEach((_, i) => {
+            const dot = document.createElement('div');
+            dot.classList.add('dot');
+            if (i === 0) dot.classList.add('active');
+            dot.onclick = () => {
+                container.scrollTo({ top: i * window.innerHeight, behavior: 'smooth' });
+            };
+            dotsContainer.appendChild(dot);
+        });
+
+        // Initialize page indicator total count
+        document.getElementById('pageIndicator').innerText = `第 1 頁 / 共 ${slides.length} 頁`;
+
+        // Audio Player Controls
+        const players = ['ai_kotoba', 'happiness_singing', 'manye'];
+
+        window.togglePlay = function (id) {
+            const audio = document.getElementById(`audio_${id}`);
+            const btn = document.getElementById(`btn_${id}`);
+            const icon = document.getElementById(`icon_${id}`);
+            const vinyl = document.getElementById(`vinyl_${id}`).querySelector('.vinyl-record');
+
+            // Pause all other audio players first
+            players.forEach(p => {
+                if (p !== id) {
+                    const otherAudio = document.getElementById(`audio_${p}`);
+                    const otherIcon = document.getElementById(`icon_${p}`);
+                    const otherVinyl = document.getElementById(`vinyl_${p}`).querySelector('.vinyl-record');
+                    if (otherAudio) {
+                        otherAudio.pause();
+                        otherVinyl.style.animationPlayState = 'paused';
+                        otherIcon.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'; // Play icon
+                    }
+                }
+            });
+
+            if (audio.paused) {
+                audio.play().catch(err => console.log("Playback failed:", err));
+                vinyl.style.animationPlayState = 'running';
+                icon.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'; // Pause icon
+            } else {
+                audio.pause();
+                vinyl.style.animationPlayState = 'paused';
+                icon.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'; // Play icon
+            }
+        };
+
+        window.seekAudio = function (id) {
+            const audio = document.getElementById(`audio_${id}`);
+            const progress = document.getElementById(`progress_${id}`);
+            if (audio.duration) {
+                const time = (progress.value / 100) * audio.duration;
+                audio.currentTime = time;
+            }
+        };
+
+        window.setVolume = function (id) {
+            const audio = document.getElementById(`audio_${id}`);
+            const volumeBar = document.getElementById(`volume_${id}`);
+            const volumeVal = document.getElementById(`val_volume_${id}`);
+            audio.volume = volumeBar.value / 100;
+            volumeVal.innerText = `${volumeBar.value}%`;
+        };
+
+        function formatTime(secs) {
+            if (isNaN(secs)) return '00:00';
+            const m = Math.floor(secs / 60).toString().padStart(2, '0');
+            const s = Math.floor(secs % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        // Initialize players listeners
+        players.forEach(id => {
+            const audio = document.getElementById(`audio_${id}`);
+            const progress = document.getElementById(`progress_${id}`);
+            const currentT = document.getElementById(`time_current_${id}`);
+            const durationT = document.getElementById(`time_duration_${id}`);
+
+            if (audio) {
+                audio.addEventListener('timeupdate', () => {
+                    if (audio.duration) {
+                        const val = (audio.currentTime / audio.duration) * 100;
+                        progress.value = val;
+                        currentT.innerText = formatTime(audio.currentTime);
+                    }
+                });
+
+                audio.addEventListener('loadedmetadata', () => {
+                    durationT.innerText = formatTime(audio.duration);
+                });
+
+                audio.addEventListener('ended', () => {
+                    const icon = document.getElementById(`icon_${id}`);
+                    const vinyl = document.getElementById(`vinyl_${id}`).querySelector('.vinyl-record');
+                    vinyl.style.animationPlayState = 'paused';
+                    icon.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+                    progress.value = 0;
+                    currentT.innerText = '00:00';
+                });
+            }
+        });
+
+        // Auto pause on slide transition
+        function pauseAllAudio() {
+            players.forEach(id => {
+                const audio = document.getElementById(`audio_${id}`);
+                const icon = document.getElementById(`icon_${id}`);
+                const vinyl = document.getElementById(`vinyl_${id}`)?.querySelector('.vinyl-record');
+                if (audio && !audio.paused) {
+                    audio.pause();
+                    if (vinyl) vinyl.style.animationPlayState = 'paused';
+                    if (icon) icon.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+                }
+            });
+        }
+
+        // Scroll observer
+        let lastIndex = 0;
+        container.onscroll = () => {
+            const index = Math.round(container.scrollTop / window.innerHeight);
+            if (index !== lastIndex) {
+                pauseAllAudio();
+                lastIndex = index;
+            }
+            slides.forEach((s, i) => i === index ? s.classList.add('active') : s.classList.remove('active'));
+            document.querySelectorAll('.dot').forEach((d, i) => i === index ? d.classList.add('active') : d.classList.remove('active'));
+
+            // Update page indicator
+            document.getElementById('pageIndicator').innerText = `第 ${index + 1} 頁 / 共 ${slides.length} 頁`;
+        };
+
+        // Smooth scroll for mouse wheel
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY;
+            if (delta > 0) container.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+            else container.scrollBy({ top: -window.innerHeight, behavior: 'smooth' });
+        }, { passive: false });
+    </script>
+    <footer
+        style="position: fixed; bottom: 10px; left: 20px; font-size: 0.7rem; color: rgba(255,255,255,0.2); z-index: 100;">
+        VOCALOID、ボカロ、VOCALOID:AI、VX-β 是 Yamaha 株式會社的註冊商標。
+    </footer>
+</body>
+
+</html>
